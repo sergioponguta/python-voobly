@@ -22,30 +22,25 @@ import datetime
 import voobly
 
 # Establish a session. Use the API key provided by Voobly.
-session = voobly.get_session(key="<your-api-key>", cache_expiry=datetime.timedelta(days=1))
+api_session = voobly.get_session(key="<your-api-key>", cache_expiry=datetime.timedelta(days=1))
 # optionally, supply username and password (for match access only):
 session = voobly.get_session(username="<your-voobly-username>", password="<your-voobly-password>")
 
 # Validate API key
-assert voobly.validate_key(session) == True
-
-# Get top accounts on AoC "RM - 1v1" ladder
-top_accounts = voobly.get_ladder(session, 131)        # returns list
-top_accounts = voobly.get_ladder(session, "RM - 1v1") # same list
+assert voobly.validate_key(api_session) == True
 
 # Get lobby information for AoC
-lobbies = voobly.get_lobbies(session, 13)                                  # returns list
-lobbies = voobly.get_ladders(session, "Age of Empires II: The Conquerors") # same list
+lobbies = voobly.get_lobbies(api_session, 13)                                  # returns list
 
 # Look up a user ID based on username
-uid = vooby.find_user("TheViper")  # returns 123211439
+uid = voobly.find_user(api_session, "TheViper")  # returns 123211439
 
 # Look up user IDs for multiple usernames
-results = voobly.find_users(session, "TheViper", "MBLAoC")  # returns list
+results = voobly.find_users(api_session, "TheViper", "MBLAoC")  # returns list
 
 # Get user profile for "TheViper"
-profile = voobly.get_user(session, 123211439)
-profile = voobly.get_user(session, "TheViper") # same result
+profile = voobly.get_user(api_session, 123211439)
+profile = voobly.get_user(api_session, "TheViper") # same result
 
 # Get match information
 match = voobly.get_match(session, 18786853)  # match id (last portion of URL), returns time played and rec links
@@ -53,6 +48,17 @@ match = voobly.get_match(session, 18786853)  # match id (last portion of URL), r
 # Download rec
 filename = voobly.download_rec(session, "/files/view/50168753/9ogc...", "/save/to") # retrieve path from `get_match`
 
+# Get top ten accounts on AoC "RM - 1v1" ladder
+top_accounts = voobly.get_ladder(api_session, "RM - 1v1")
+top_ten_accounts = top_accounts[0:10]
+
+
+# Download last 9 games of each player player on a list, automatically create folder per player and format the rec names
+for account in top_ten_accounts:
+
+    games = voobly.get_last_matches(session, account['uid']) # returns list
+    voobly.download_game_list(session, account['display_name'], games, '/save/') # downloads in C:/save/
+    
 # The following methods are helpers built from the previous.
 
 # Get a user profile & ladder info based on username
