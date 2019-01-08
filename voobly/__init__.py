@@ -39,6 +39,7 @@ VOOBLY_API_URL = BASE_URL + '/api/'
 LOGIN_PAGE = BASE_URL + '/login'
 LOGIN_URL = BASE_URL + '/login/auth'
 MATCH_URL = BASE_URL + '/match/view'
+RECORDING_MATCHES_URL = BASE_URL + '/recording/browse'
 PROFILE_PATH = '/profile/view'
 FIND_USER_URL = 'finduser/'
 FIND_USERS_URL = 'findusers/'
@@ -61,6 +62,40 @@ COLOR_MAPPING = {
     '#92278F': 5,
     '#C0C0C0': 6,
     '#FF8000': 7
+}
+
+CIV_IMAGE_ID = {
+    '1.' : 'Brit',
+    '2.' : 'Frank',
+    '3.' : 'Goth',
+    '4.' : 'Teu',
+    '5.' : 'Jap',
+    '6.' : 'Chi',
+    '7.' : 'Byz',
+    '8.' : 'Per',
+    '9.' : 'Sar',
+    '10' : 'Turk',
+    '11' : 'Vik',
+    '12' : 'Mon',
+    '13' : 'Cel',
+    '14' : 'Spa',
+    '15' : 'Azt',
+    '16' : 'May',
+    '17' : 'Hun',
+    '18' : 'Kor',
+    '19' : 'Ita',
+    '20' : 'Ind',
+    '21' : 'Inc',
+    '22' : 'Mag',
+    '23' : 'Sla',
+    '24' : 'Por',
+    '25' : 'Eth',
+    '26' : 'Mal',
+    '27' : 'Ber',
+    '28' : 'Khm',
+    '29' : 'Malay',
+    '30' : 'Bur',
+    '31' : 'Vie'
 }
 
 
@@ -256,18 +291,87 @@ def authenticated(function):
 
 
 @authenticated
+def get_last_matches(session, user_id):
+    """get 9 last games from a player."""
+    url = '{}/{}'.format(RECORDING_MATCHES_URL, user_id)
+    parsed = make_scrape_request(session, url)
+    parsed_text = str(parsed)
+    game_list = []
+    end_index = 0
+
+    for i in range(0, 9):
+        start_index = parsed_text.find("Match:", end_index)
+        match_index = parsed_text.find("#", start_index) + 1
+        end_index = parsed_text.find("<", match_index)
+        game_list.append(get_match(session, parsed_text[match_index:end_index]))
+        #print(game_list[i]['players'][0]['url'])
+
+    return game_list
+
+@authenticated
+def download_game_list(session, username, game_list, target_path):
+
+    """Download, extract and sort by player and civ a list of recorded games."""
+
+    for i in game_list:
+        resp = session.get(BASE_URL + i['players'][0]['url'])
+
+        
+        if len(i) == 2: #Only for 1v1 games
+
+            downloaded = zipfile.ZipFile(io.BytesIO(resp.content))
+            downloaded.extractall(target_path + username + "/")
+            date =  downloaded.namelist()[0][4:-4]
+            
+            old_file = os.path.join(target_path + username + "/", downloaded.namelist()[0])
+            new_file = os.path.join(target_path + username + "/", "[" + date + "]" + i['players'][0]['username'] + "(" + i['players'][0]['civ'] + ")" + " vs " + i['players'][1]['username'] + "(" + i['players'][1]['civ'] + ")")
+            try:
+                os.rename(old_file, new_file)
+            except FileExistsError:
+                
+                os.remove(old_file)
+
+    return downloaded.namelist()
+
+@authenticated
 def get_match(session, match_id):
     """Get match metadata."""
     url = '{}/{}'.format(MATCH_URL, match_id)
     parsed = make_scrape_request(session, url)
+    parsed_string = str(parsed)
     date_played = parsed.find(text=MATCH_DATE_PLAYED).find_next('td').text
+    civs_index = [m.start() for m in re.finditer('res/games/AOC/civs/', parsed_string)]
+    player_url_index = [m.start() for m in re.finditer('https://voobly.com/profile/view/', parsed_string)]
+    players_aux = []
+    players_ids = []
+    civs_names = []
     players = []
     colors = {}
+    civs = {}
+
+
+    for i in range(1, (len(civs_index) * 2), 2):
+        players_aux.append(player_url_index[i])
+
+
+    for i in players_aux:
+
+        index = parsed_string.find('"', i + 32)
+        players_ids.append(parsed_string[i + 32:index])
+    
+
+    for i in civs_index:
+        civs_names.append(CIV_IMAGE_ID[parsed_string[i + 19:i + 21]])
+        
+    for i in range(len(civs_names)):
+        civs[players_ids[i]] = civs_names[i]
+
     for div in parsed.findAll('div', style=True):
         if div['style'].startswith('background-color:'):
             name = div.find_next('a', href=re.compile(PROFILE_PATH)).text
             color = div['style'].split(':')[1].split(';')[0].strip()
             colors[name] = color
+
 
     for i, rec in enumerate(parsed.find_all('a', href=re.compile('^/files/view'))):
         player_name = rec.find('b').text
@@ -292,6 +396,7 @@ def get_match(session, match_id):
             'id': user_id,
             'username': username,
             'clan': clan,
+            'civ': civs[str(user_id)],
             'color_id': COLOR_MAPPING.get(colors[username]),
             'rate_before': rate_before,
             'rate_after': rate_after
